@@ -1,6 +1,7 @@
 package com.focuskavach.utils
 
 import android.content.Context
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.TextUtils
 import com.focuskavach.service.AppBlockerService
@@ -42,5 +43,11 @@ object PermissionsHelper {
 
     fun isOverlayPermissionGranted(context: Context): Boolean {
         return Settings.canDrawOverlays(context)
+    }
+
+    // Naya function: Battery optimization check ke liye
+    fun isBatteryOptimizationIgnored(context: Context): Boolean {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return powerManager.isIgnoringBatteryOptimizations(context.packageName)
     }
 }
