@@ -1,8 +1,12 @@
 package com.focuskavach.domain
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 object FocusManager {
     private val _isSessionActive = MutableStateFlow(false)
@@ -17,13 +21,14 @@ object FocusManager {
     private val _isTemporarilyUnlocked = MutableStateFlow(false)
     val isTemporarilyUnlocked: StateFlow<Boolean> = _isTemporarilyUnlocked.asStateFlow()
 
-    // Replace with dynamic list from Room DB later
-    val blockedPackages = setOf(
-        "com.google.android.youtube",
-        "com.instagram.android",
-        "org.telegram.messenger",
-        "com.facebook.katana"
-    )
+    private val _blockedPackages = MutableStateFlow<Set<String>>(emptySet())
+    val blockedPackages: StateFlow<Set<String>> = _blockedPackages.asStateFlow()
+
+    private val timerScope = CoroutineScope(Dispatchers.Default)
+
+    fun updateBlockedApps(packages: Set<String>) {
+        _blockedPackages.value = packages
+    }
 
     fun startSession(monkMode: Boolean = false) {
         _isMonkMode.value = monkMode
@@ -34,19 +39,26 @@ object FocusManager {
 
     fun endSession() {
         _isSessionActive.value = false
+        _isTemporarilyUnlocked.value = false
     }
 
     fun useUnlockToken(): Boolean {
         if (_isMonkMode.value || _unlocksRemaining.value <= 0) return false
+        
         _unlocksRemaining.value -= 1
         _isTemporarilyUnlocked.value = true
-        // Note: Implement a coroutine timer to flip this back to false after 60s
+        
+        // Start 1-minute countdown to re-lock
+        timerScope.launch {
+            delay(60_000L) // 1 minute in milliseconds
+            _isTemporarilyUnlocked.value = false
+        }
         return true
     }
 
     fun shouldBlockApp(packageName: String): Boolean {
         return _isSessionActive.value && 
                !_isTemporarilyUnlocked.value && 
-               blockedPackages.contains(packageName)
+               _blockedPackages.value.contains(packageName)
     }
 }
