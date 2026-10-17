@@ -21,6 +21,55 @@ document.querySelectorAll('.menu-item').forEach(item => {
 });
 
 
+
+// --- Excel se form auto-fill ---
+const AUTO_FIELDS = {
+    last_cash:       "input_last_cash",
+    Closing_balance: "input_Closing_balance",
+    p_l:             "input_p_l",
+    hissa:           "input_hissa",
+    amanat:          "input_amanat",
+    Vamanat:         "input_Vamanat"
+};
+const AUTO_LABELS = { last_cash: "Last Cash", Closing_balance: "Closing Balance", p_l: "Current Year P&L", hissa: "Hissa Rashi", amanat: "Amanat Sadasya", Vamanat: "Amanat Vyavasthapak" };
+
+function extractFields(d) {
+    const out = {};
+    const num = v => { const n = parseFloat(String(v).replace(/,/g, '')); return isNaN(n) ? null : n; };
+    const find = (rows, nameKey, amtKey, re, skipRe) => {
+        for (const r of (rows || [])) {
+            const name = String(r[nameKey] || "");
+            if (re.test(name) && !(skipRe && skipRe.test(name)) && num(r[amtKey]) !== null) return num(r[amtKey]).toFixed(2);
+        }
+        return null;
+    };
+    const inc = d.income_items, pnl = d.pnl_items, bs = d.bs_items;
+    out.last_cash = find(inc, "income_name", "income_amount", /opening\s*balance|प्रारं?म?्?भिक\s*रोकड़|प्रारम्भिक\s*रोकड़/i);
+    out.Closing_balance = find(inc, "expense_name", "expense_amount", /closing\s*balance|अं?न्?तिम\s*रोकड/i);
+    out.p_l = find(pnl, "exp_details", "exp_amount", /net\s*(profit|loss)|शुद्ध\s*(लाभ|हानि)|वर्ष\s*के\s*लिए\s*(लाभ|हानि)/i)
+           || find(pnl, "inc_details", "inc_amount", /net\s*(profit|loss)|शुद्ध\s*(लाभ|हानि)|वर्ष\s*के\s*लिए\s*(लाभ|हानि)/i);
+    out.hissa = find(bs, "liability_name", "liability_amount", /share\s*capital|हिस्सा\s*(पूंजी|राशि)/i);
+    out.Vamanat = find(bs, "liability_name", "liability_amount", /(deposit|अमानत).*(manager|व्यवस्थापक)|(manager|व्यवस्थापक).*(deposit|अमानत)/i);
+    out.amanat = find(bs, "liability_name", "liability_amount", /deposit|अमानत/i, /manager|व्यवस्थापक/i);
+    return out;
+}
+
+function autoFillForm(d) {
+    const found = extractFields(d), filled = [], manual = [];
+    for (const key of Object.keys(AUTO_FIELDS)) {
+        const el = document.getElementById(AUTO_FIELDS[key]);
+        if (!el) continue;
+        if (found[key] !== null && found[key] !== undefined) {
+            // user ne haath se likha ho to overwrite na karein
+            if (el.value === "" || el.dataset.auto === "1") {
+                el.value = found[key]; el.dataset.auto = "1"; el.classList.add('autofilled'); filled.push(AUTO_LABELS[key]);
+            }
+        } else if (el.value === "") manual.push(AUTO_LABELS[key]);
+    }
+    return { filled, manual };
+}
+document.querySelectorAll('#gssForm input').forEach(i => i.addEventListener('input', () => { i.dataset.auto = "0"; i.classList.remove('autofilled'); }));
+
 // --- 2. Excel Upload & Parsing ---
 const excelInput = document.getElementById('excelFile');
 const uploadFeedback = document.getElementById('uploadFeedback');
@@ -100,7 +149,11 @@ excelInput?.addEventListener('change', function(e) {
                 if (!found) { finalReportData[targetKey[t]] = []; if (!cfg.optional) missing.push(cfg.options.map(o => o.names[0]).join(" / ")); }
             }
             if (missing.length) { uploadFeedback.innerHTML = `<span style="color:red;">❌ ये sheets नहीं मिलीं: ${missing.join(' | ')}<br>Excel में मिली sheets: ${workbook.SheetNames.join(', ')}</span>`; return; }
-            uploadFeedback.innerHTML = `<span style="color: var(--success);">✅ Excel loaded: ${used.join(', ')}. Ab 'Edit Profile' par jayein.</span>`;
+            const af = autoFillForm(finalReportData);
+            uploadFeedback.innerHTML = `<span style="color: var(--success);">✅ Excel loaded: ${used.join(', ')}.</span>` +
+                (af.filled.length ? `<br><span style="color: var(--success);">✍️ Auto-fill hua: ${af.filled.join(', ')}</span>` : '') +
+                (af.manual.length ? `<br><span style="color:#854d0e;">✋ Excel me nahi mila, 'Edit Profile' me khud bharein: ${af.manual.join(', ')}</span>` : '') +
+                `<br><span class="text-muted">Baaki fields (Turnover, Audit Fee, Last year P&L, Est. Exp. waghera) 'Edit Profile' me bharein.</span>`;
             document.getElementById('statusText').innerText = "Excel Data Loaded";
             document.getElementById('statusText').className = "status-badge success";
             
