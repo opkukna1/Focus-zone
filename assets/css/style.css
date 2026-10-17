@@ -10,7 +10,7 @@
     --text-main: #334155;
     --text-muted: #64748b;
     --card-bg: #ffffff;
-    --border: #e2e8f0; 
+    --border: #e2e8f0;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
@@ -92,3 +92,6 @@ body { background-color: var(--bg-color); color: var(--text-main); }
 .sidebar-overlay.show { display: block; }
 @media (min-width: 769px) { .sidebar-overlay, .sidebar-overlay.show { display: none; } }
 .mobile-only { min-width: 44px; min-height: 44px; touch-action: manipulation; }
+
+/* Auto-filled from Excel */
+.form-group input.autofilled { background: #ecfdf5; border-color: var(--success); }
