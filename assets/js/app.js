@@ -41,34 +41,66 @@ excelInput?.addEventListener('change', function(e) {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, {type: 'array'});
             
-            const mapSheetToObjects = (sheetName, keys) => {
-                let objects = [];
-                if (workbook.SheetNames.includes(sheetName)) {
-                    const ws = workbook.Sheets[sheetName];
-                    const json = XLSX.utils.sheet_to_json(ws, {header: 1});
-                    
-                    for (let i = 3; i < json.length; i++) { 
-                        const row = json[i];
-                        if (row && row.length > 0 && row.some(cell => cell !== undefined && cell !== null && cell !== "")) {
-                            let obj = {};
-                            keys.forEach((key, index) => { 
-                                obj[key] = (row[index] !== undefined && row[index] !== null && row[index] !== "NaN") ? row[index] : ""; 
-                            });
-                            objects.push(obj);
-                        }
+            const norm = s => String(s).toLowerCase().replace(/[\s_]/g, '');
+            const isEmpty = c => c === undefined || c === null || c === "";
+            const fmt = (key, v) => (typeof v === 'number' && /amount/.test(key)) ? v.toFixed(2) : v;
+
+            // Har table ke liye supported sheet layouts (pehla jo mile wahi use hoga)
+            const LAYOUTS = {
+                income: { keys: ["income_name","income_amount","expense_name","expense_amount"], options: [
+                    { names: ["आय व्यय"], start: 3, cols: [0,1,2,3], stop: false },
+                    { names: ["R&P","RP","Receipts&Payments"], start: 4, cols: [0,3,5,8], stop: true } ] },
+                trading: { keys: ["purchase_name","purchase_amount","sale_name","sale_amount"], optional: true, options: [
+                    { names: ["व्यापार खाता"], start: 3, cols: [0,1,2,3], stop: false },
+                    { names: ["Trading"], start: 5, cols: [0,1,3,4], stop: true } ] },
+                pnl: { keys: ["exp_details","exp_amount","inc_details","inc_amount"], options: [
+                    { names: ["लाभ हानि"], start: 3, cols: [0,1,2,3], stop: false },
+                    { names: ["P&L","PL","ProfitLoss","Profit&Loss"], start: 5, cols: [0,1,3,4], stop: true } ] },
+                bs: { keys: ["liability_name","liability_amount_prev","liability_amount","asset_name","asset_amount_prev","asset_amount"], options: [
+                    { names: ["तुलन पत्र"], start: 3, cols: [0,1,2,3,4,5], stop: false },
+                    { names: ["BalanceSheet","Balance Sheet"], start: 5, cols: [0,-1,1,3,-1,4], stop: true } ] }
+            };
+
+            const mapRows = (json, keys, opt) => {
+                const objects = [];
+                for (let i = opt.start; i < json.length; i++) {
+                    const row = json[i];
+                    if (!row || !row.some(c => !isEmpty(c))) {
+                        if (opt.stop && objects.length) break;   // data ke baad khali row = table khatam
+                        continue;
                     }
+                    const obj = {};
+                    keys.forEach((key, k) => {
+                        const ci = opt.cols[k];
+                        const v = ci >= 0 ? row[ci] : "";
+                        obj[key] = (isEmpty(v) || v === "NaN") ? "" : fmt(key, v);
+                    });
+                    objects.push(obj);
+                    const first = String(row[0] === undefined ? "" : row[0]).trim().toLowerCase();
+                    if (opt.stop && (first === "total" || first === "योग")) break;
                 }
                 return objects;
             };
 
-            finalReportData.income_items = mapSheetToObjects("आय व्यय", ["income_name", "income_amount", "expense_name", "expense_amount"]);
-            finalReportData.trading_items = mapSheetToObjects("व्यापार खाता", ["purchase_name", "purchase_amount", "sale_name", "sale_amount"]);
-            finalReportData.pnl_items = mapSheetToObjects("लाभ हानि", ["exp_details", "exp_amount", "inc_details", "inc_amount"]);
-            finalReportData.bs_items = mapSheetToObjects("तुलन पत्र", ["liability_name", "liability_amount_prev", "liability_amount", "asset_name", "asset_amount_prev", "asset_amount"]);
-
-            const missing = ["आय व्यय","व्यापार खाता","लाभ हानि","तुलन पत्र"].filter(n => !workbook.SheetNames.includes(n));
-            if (missing.length) { uploadFeedback.innerHTML = `<span style="color:red;">❌ ये sheets नहीं मिलीं: ${missing.join(', ')}<br>Excel में मिली sheets: ${workbook.SheetNames.join(', ')}</span>`; return; }
-            uploadFeedback.innerHTML = `<span style="color: var(--success);">✅ Accounts Data Parsed successfully! Proceed to 'Edit Profile'.</span>`;
+            const missing = [];
+            const used = [];
+            const targetKey = { income: "income_items", trading: "trading_items", pnl: "pnl_items", bs: "bs_items" };
+            for (const t of Object.keys(LAYOUTS)) {
+                const cfg = LAYOUTS[t];
+                let found = false;
+                for (const opt of cfg.options) {
+                    const sheetName = workbook.SheetNames.find(n => opt.names.map(norm).includes(norm(n)));
+                    if (sheetName) {
+                        const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {header: 1, blankrows: true, defval: ""});
+                        finalReportData[targetKey[t]] = mapRows(json, cfg.keys, opt);
+                        used.push(sheetName + " (" + finalReportData[targetKey[t]].length + " rows)");
+                        found = true; break;
+                    }
+                }
+                if (!found) { finalReportData[targetKey[t]] = []; if (!cfg.optional) missing.push(cfg.options.map(o => o.names[0]).join(" / ")); }
+            }
+            if (missing.length) { uploadFeedback.innerHTML = `<span style="color:red;">❌ ये sheets नहीं मिलीं: ${missing.join(' | ')}<br>Excel में मिली sheets: ${workbook.SheetNames.join(', ')}</span>`; return; }
+            uploadFeedback.innerHTML = `<span style="color: var(--success);">✅ Excel loaded: ${used.join(', ')}. Ab 'Edit Profile' par jayein.</span>`;
             document.getElementById('statusText').innerText = "Excel Data Loaded";
             document.getElementById('statusText').className = "status-badge success";
             
