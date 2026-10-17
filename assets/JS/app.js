@@ -1,3 +1,4 @@
+window.__gssLoaded = true;
 // Global Storage
 let finalReportData = {};
 let isExcelReady = false;
@@ -15,21 +16,24 @@ document.querySelectorAll('.menu-item').forEach(item => {
         document.querySelectorAll('.view-section').forEach(sec => sec.classList.add('hidden'));
         document.getElementById(targetId).classList.remove('hidden');
 
-        document.getElementById('sidebar').classList.remove('open');
+        if (typeof gssDrawer === 'function') gssDrawer(false); else document.getElementById('sidebar').classList.remove('open');
     });
 });
 
-document.getElementById('openSidebar').addEventListener('click', () => document.getElementById('sidebar').classList.add('open'));
-document.getElementById('closeSidebar').addEventListener('click', () => document.getElementById('sidebar').classList.remove('open'));
 
 // --- 2. Excel Upload & Parsing ---
 const excelInput = document.getElementById('excelFile');
 const uploadFeedback = document.getElementById('uploadFeedback');
 const dataCheck = document.getElementById('dataCheck');
 
-excelInput.addEventListener('change', function(e) {
+excelInput?.addEventListener('click', function() { this.value = ''; });
+excelInput?.addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (typeof XLSX === 'undefined') {
+        uploadFeedback.innerHTML = '<span style="color:red;">❌ Excel library load nahi hui (internet/CDN check karein) aur page reload karein.</span>';
+        return;
+    }
 
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -62,6 +66,8 @@ excelInput.addEventListener('change', function(e) {
             finalReportData.pnl_items = mapSheetToObjects("लाभ हानि", ["exp_details", "exp_amount", "inc_details", "inc_amount"]);
             finalReportData.bs_items = mapSheetToObjects("तुलन पत्र", ["liability_name", "liability_amount_prev", "liability_amount", "asset_name", "asset_amount_prev", "asset_amount"]);
 
+            const missing = ["आय व्यय","व्यापार खाता","लाभ हानि","तुलन पत्र"].filter(n => !workbook.SheetNames.includes(n));
+            if (missing.length) { uploadFeedback.innerHTML = `<span style="color:red;">❌ ये sheets नहीं मिलीं: ${missing.join(', ')}<br>Excel में मिली sheets: ${workbook.SheetNames.join(', ')}</span>`; return; }
             uploadFeedback.innerHTML = `<span style="color: var(--success);">✅ Accounts Data Parsed successfully! Proceed to 'Edit Profile'.</span>`;
             document.getElementById('statusText').innerText = "Excel Data Loaded";
             document.getElementById('statusText').className = "status-badge success";
@@ -71,7 +77,7 @@ excelInput.addEventListener('change', function(e) {
             checkReadyState();
 
         } catch (error) {
-            uploadFeedback.innerHTML = `<span style="color: red;">❌ Error parsing Excel. Please ensure correct format.</span>`;
+            uploadFeedback.innerHTML = `<span style="color: red;">❌ Error parsing Excel: ${error.message}</span>`;
             console.error(error);
         }
     };
@@ -80,7 +86,7 @@ excelInput.addEventListener('change', function(e) {
 
 // --- 3. Form Save Logic ---
 const formCheck = document.getElementById('formCheck');
-document.getElementById('saveDataBtn').addEventListener('click', (e) => {
+document.getElementById('saveDataBtn')?.addEventListener('click', (e) => {
     e.preventDefault();
     const inputs = document.querySelectorAll('#gssForm input');
     inputs.forEach(input => {
@@ -105,7 +111,7 @@ function checkReadyState() {
 }
 
 // --- 4. Word Document Generation (FIXED) ---
-document.getElementById('generateDocBtn').addEventListener('click', () => {
+document.getElementById('generateDocBtn')?.addEventListener('click', () => {
     if (!isExcelReady || !isFormReady) {
         alert("Please complete both Excel upload and Profile Form.");
         return;
